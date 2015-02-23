@@ -23,7 +23,7 @@
         watchedEventClearTimer,
         vertical = slider.vars.direction === "vertical",
         reverse = slider.vars.reverse,
-        carousel = (slider.vars.itemWidth > 0),
+        carousel = (slider.vars.itemWidth > 0) || slider.vars.bleedFactor,
         fade = slider.vars.animation === "fade",
         asNav = slider.vars.asNavFor !== "",
         methods = {},
@@ -45,6 +45,9 @@
         slider.slides = $(slider.vars.selector, slider);
         slider.container = $(slider.containerSelector, slider);
         slider.count = slider.slides.length;
+        // BLEED:
+        slider.bleedWidth = null;
+        slider.bleedCloneSlides = $();
         // SYNC:
         slider.syncExists = $(slider.vars.sync).length > 0;
         // SLIDE:
@@ -86,6 +89,14 @@
 
         // INIT
         slider.setup("init");
+
+        if (slider.vars.bleedFactor) {
+            var firstSlideClone = slider.slides.first().clone().addClass('bleed-clone clone'),
+                lastSlideClone = slider.slides.last().clone().addClass('bleed-clone clone');
+            firstSlideClone.appendTo(slider.container);
+            lastSlideClone.prependTo(slider.container);
+            slider.bleedCloneSlides = slider.container.find('.bleed-clone');
+        }
 
         // CONTROLNAV:
         if (slider.vars.controlNav) methods.controlNav.setup();
@@ -563,6 +574,7 @@
             methods.smoothHeight();
           } else if (carousel) { //CAROUSEL:
             slider.slides.width(slider.computedW);
+            slider.bleedCloneSlides.width(slider.computedW);
             slider.update(slider.pagingCount);
             slider.setProps();
           }
@@ -852,12 +864,20 @@
         var posCheck = (pos) ? pos : ((slider.itemW + slider.vars.itemMargin) * slider.move) * slider.animatingTo,
             posCalc = (function() {
               if (carousel) {
-                return (special === "setTouch") ? pos :
-                       (reverse && slider.animatingTo === slider.last) ? 0 :
-                       (reverse) ? slider.limit - (((slider.itemW + slider.vars.itemMargin) * slider.move) * slider.animatingTo) :
-                       (slider.animatingTo === slider.last) ? slider.limit : posCheck;
+                  var calculatedPosition = (special === "setTouch") ? pos :
+                                           (reverse && slider.animatingTo === slider.last) ? 0 :
+                                           (reverse) ? slider.limit - (((slider.itemW + slider.vars.itemMargin) * slider.move) * slider.animatingTo) :
+                                           (slider.animatingTo === slider.last) ? slider.limit : posCheck;
+                  if (slider.vars.bleedFactor) {
+                      if (slider.animatingTo === slider.last) {
+                          calculatedPosition = calculatedPosition + slider.itemW + slider.bleedWidth;
+                      } else {
+                          calculatedPosition = calculatedPosition + slider.itemW - slider.bleedWidth;
+                      }
+                  }
+                  return calculatedPosition;
               } else {
-                switch (special) {
+                  switch (special) {
                   case "setTotal": return (reverse) ? ((slider.count - 1) - slider.currentSlide + slider.cloneOffset) * pos : (slider.currentSlide + slider.cloneOffset) * pos;
                   case "setTouch": return (reverse) ? pos : pos;
                   case "jumpEnd": return (reverse) ? pos : slider.count * pos;
@@ -926,7 +946,11 @@
           slider.setProps(sliderOffset * slider.computedW, "init");
           setTimeout(function(){
             slider.doMath();
-            slider.newSlides.css({"width": slider.computedW, "float": "left", "display": "block"});
+            var slidesCss = {"width": slider.computedW, "float": "left", "display": "block"};
+            slider.newSlides.css(slidesCss);
+            if (slider.vars.bleedFactor) {
+                slider.bleedCloneSlides.css(slidesCss);
+            }
             // SMOOTH HEIGHT:
             if (slider.vars.smoothHeight) methods.smoothHeight();
           }, (type === "init") ? 100 : 0);
@@ -974,7 +998,10 @@
         slider.itemW = (slider.minW > slider.w) ? (slider.w - (slideMargin * (minItems - 1)))/minItems :
                        (slider.maxW < slider.w) ? (slider.w - (slideMargin * (maxItems - 1)))/maxItems :
                        (slider.vars.itemWidth > slider.w) ? slider.w : slider.vars.itemWidth;
-
+        if (slider.vars.bleedFactor) {
+            slider.bleedWidth = slider.itemW * slider.vars.bleedFactor;
+            slider.itemW = slider.itemW - slider.bleedWidth * 2;
+        }
         slider.visible = Math.floor(slider.w/(slider.itemW));
         slider.move = (slider.vars.move > 0 && slider.vars.move < slider.visible ) ? slider.vars.move : slider.visible;
         slider.pagingCount = Math.ceil(((slider.count - slider.visible)/slider.move) + 1);
@@ -1134,7 +1161,8 @@
     minItems: 1,                    //{NEW} Integer: Minimum number of carousel items that should be visible. Items will resize fluidly when below this.
     maxItems: 0,                    //{NEW} Integer: Maxmimum number of carousel items that should be visible. Items will resize fluidly when above this limit.
     move: 0,                        //{NEW} Integer: Number of carousel items that should move on animation. If 0, slider will move all visible items.
-    allowOneSlide: true,           //{NEW} Boolean: Whether or not to allow a slider comprised of a single slide
+    allowOneSlide: true,            //{NEW} Boolean: Whether or not to allow a slider comprised of a single slide
+    bleedFactor: 0,                 //{NEW} Percentage (ie a float as fraction of 1) of the "bleed" of neighbor slices to show
 
     // Callback API
     start: function(){},            //Callback: function(slider) - Fires when the slider loads the first slide
